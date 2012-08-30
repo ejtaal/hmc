@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Example with Google maps, jQuery and JSON - Google maps jQuery plugin</title>
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+<meta http-equiv="content-language" content="en" />
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+<style>
+.button {
+	width: 100%; background-color: silver;
+  font-size: large; text-align: center;
+  margin-top: 10px; padding-bottom: 10px;
+}
+
+html, body { height: 100%; }
+
+</style>
+</head>
+<body>
+<table style='height: 15%;'><tr><td>
+<div class=button onClick='javascript:go_to_current_position()'>My location</div>
+<td>
+<div class=button onClick='javascript:find_closest_marker()'>Find nearest</div>
+</tr></table>
+<textarea rows=7 id=debug style='width: 80%; font-size: 50%;' >
+</textarea>
+<div style='width: 100%; height: 80%;' id="map_canvas"></div>
+
+<script>
+function debug( obj) {
+  $('#debug').append( dump(obj) + "<br>");
+  var d = $('#debug');
+  d.scrollTop( d[0].scrollHeight - d.height());
+  //console.log( str);
+}
+/**
+ * Function : dump()
+ * Arguments: The data - array,hash(associative array),object
+ *    The level - OPTIONAL
+ * Returns  : The textual representation of the array.
+ * This function was inspired by the print_r function of PHP.
+ * This will accept some data as the argument and return a
+ * text that will be a more readable version of the
+ * array/hash/object that is given.
+ * Docs: http://www.openjs.com/scripts/others/dump_function_php_print_r.php
+ */
+function dump(arr,level) {
+	var dumped_text = "";
+	if(!level) level = 0;
+	
+	//The padding given at the beginning of the line.
+	var level_padding = "";
+	for(var j=0;j<level+1;j++) level_padding += "    ";
+	
+	if(typeof(arr) == 'object') { //Array/Hashes/Objects 
+		for(var item in arr) {
+			var value = arr[item];
+			
+			if(typeof(value) == 'object') { //If it is an array,
+				dumped_text += level_padding + "'" + item + "' ...\n";
+				dumped_text += dump(value,level+1);
+			} else {
+				dumped_text += level_padding + "'" + item + "' => \"" + value + "\"\n";
+			}
+		}
+	} else { //Strings/Chars/Numbers etc.
+		dumped_text = "("+typeof(arr)+")("+arr.length+") => "+arr+" <=\n";
+	}
+	return dumped_text;
+}
+</script>
+
+
+
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="jslib/gmap-api.js"></script>
+<script type="text/javascript" src="jslib/jquery-1.7.min.js"></script>
+<script type="text/javascript" src="jslib/jquery.ui.map.full.min.js"></script>
+<script type="text/javascript" src="jslib/jquery.ui.map.extensions.js"></script>
+<script>
+// main() ...
+$('#map_canvas').gmap().bind('init', function() { 
+	// This URL won't work on your localhost, so you need to change it
+	// see http://en.wikipedia.org/wiki/Same_origin_policy
+ 	//google.maps.event.addListener(this, 'click', find_closest_marker);
+	
+	//$('#map_canvas').gmap().addEventListener( 'click', function(event) { find_closest_marker(event) } );
+	
+
+	$.getJSON( 'hmc.json', function(data) { 
+		$.each( data.markers, function(i, marker) {
+			$('#map_canvas').gmap('addMarker', { 
+				'position': new google.maps.LatLng(marker.latitude, marker.longitude), 
+				'bounds': false,
+				'title': marker.title,
+				'type': marker.type,
+				'content': marker.content
+			}).click(function() {
+				$('#map_canvas').gmap('openInfoWindow', { 'content': marker.content }, this);
+			});
+		});
+	});
+});
+
+setTimeout(function() {
+	go_to_current_position();
+}, (3 * 1000));
+debug( $('#map_canvas').gmap('get', 'markers').length);
+go_to_current_position();
+$('#map_canvas').gmap('refresh');
+debug( $('#map_canvas').gmap('get', 'markers').length);
+
+// End of main()
+
+/*
+ * ======== Subroutines below =================================
+ */
+function go_to_current_position() {
+	$('#map_canvas').gmap('closeInfoWindow');
+	var map =  $('#map_canvas').gmap('get', 'map');
+  // Try HTML5 geolocation
+  if(navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(position) {
+      var pos = new google.maps.LatLng(position.coords.latitude,
+                                       position.coords.longitude);
+			/*
+      var infowindow = new google.maps.InfoWindow({
+        map: map,
+        position: pos,
+        content: 'Current location'
+      });
+			*/
+      map.setCenter(pos);
+			$('#map_canvas').gmap('addShape', 'Circle', { 
+				'strokeWeight': 0, 
+				'fillColor': "#0000FF", 
+				'fillOpacity': 0.25, 
+				'center': pos, 
+				'radius': 15, 
+				'clickable': false
+			});
+			debug( $('#map_canvas').gmap('option', 'zoom'));
+			if ( $('#map_canvas').gmap('option', 'zoom') < 9)
+				$('#map_canvas').gmap('option', 'zoom', 11);
+			$('#map_canvas').gmap('refresh');
+    }, function() {
+      handleNoGeolocation(true);
+    });
+  } else {
+    // Browser doesn't support Geolocation
+    handleNoGeolocation(false);
+  }
+  
+  function handleNoGeolocation(errorFlag) {
+    if (errorFlag) {
+      var content = 'Error: The Geolocation service failed.';
+    } else {
+      var content = 'Error: Your browser doesn\'t support geolocation.';
+    }
+    var options = {
+      map: map,
+      position: new google.maps.LatLng( 51.5, 0), //Centre of London
+      content: content
+    };
+    var infowindow = new google.maps.InfoWindow(options);
+    map.setCenter(options.position);
+  }
+}
+
+function rad(x) {return x*Math.PI/180;}
+function find_closest_marker( ) {
+		var c =  $('#map_canvas').gmap('get', 'map').getCenter();
+//alert(c);
+    var lat = c.lat();
+    var lng = c.lng();
+    var R = 6371; // radius of earth in km
+    var distances = [];
+    var closest = -1;
+		var markers = $('#map_canvas').gmap('get', 'markers');
+	debug( markers.length);
+    for( i = 0; i < markers.length; i++ ) {
+        var mlat = markers[i].position.lat();
+        var mlng = markers[i].position.lng();
+				/*
+				 * Yes, the haversine formula is more correct, but since all
+				 * markers are located in the uk we can just pretend lat/long
+				 * are 2 dimensional x/y coords and hopefully the results will be
+				 * the same ;)
+				*/
+        var d = Math.sqrt( Math.pow((mlat - lat),2) + Math.pow((mlng - lng),2));
+				/*
+        var dLat  = rad(mlat - lat);
+        var dLong = rad(mlng - lng);
+        var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(rad(lat)) * Math.cos(rad(lat)) * Math.sin(dLong/2) * Math.sin(dLong/2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        var d = R * c;
+				*/
+        distances[i] = d;
+        if ( closest == -1 || d < distances[closest] ) {
+            closest = i;
+        }
+				//debug( 'm: ' + i + ' ' + markers[i].title + ' ' + d);
+				
+    }
+
+    debug('closest: ' + closest);
+    debug(markers[closest].content);
+	
+		var map =  $('#map_canvas').gmap('get', 'map');
+    var pos = new google.maps.LatLng(markers[closest].position.lat(),
+                                       markers[closest].position.lng());
+    map.setCenter(pos);
+    //markers[closest].click;
+		$('#map_canvas').gmap('openInfoWindow', { 'content': markers[closest].content }, markers[closest]);
+}
+/* 
+ * JS Graveyard (unused code) 
+ */
+
+/*
+function go_to_current_position() {
+  // Set the map to some default center
+  //$('#map_canvas').gmap({'center': getLatLng()});
+  // Try to get the user's position
+  $('#map_canvas').gmap('getCurrentPosition', function(status, position) {
+    if ( status === 'OK' ) {
+      $('#map_canvas').gmap({'center': new google.maps.LatLng(position.coords.latitude, position.coords.longitude)});
+      $('#from').val(position.coords.latitude+ ','+position.coords.longitude);
+    } else {
+      // do some error handling
+    }
+  });
+  
+  // Get the google loaders client location
+  // If it fails, return some defult value
+  function getLatLng() {
+          if ( google.loader.ClientLocation != null )
+                  return new google.maps.LatLng(google.loader.ClientLocation.latitude, google.loader.ClientLocation.longitude);   
+          return new google.maps.LatLng(59.3426606750, 18.0736160278);
+  }	
+}
+*/
+</script>
+</body>
+</html>
