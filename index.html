@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<title>Example with Google maps, jQuery and JSON - Google maps jQuery plugin</title>
+<title>HMC Map App - Find the nearest HMC outlet on your mobile v1.0 beta</title>
 <meta charset="utf-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
 <meta http-equiv="content-language" content="en" />
@@ -10,7 +10,11 @@
 .button {
 	width: 100%; background-color: silver;
   font-size: large; text-align: center;
-  margin-top: 10px; padding-bottom: 10px;
+  padding-top: 10px; padding-bottom: 10px;
+}
+
+#debug {
+	display: none;
 }
 
 html, body { height: 100%; }
@@ -18,13 +22,29 @@ html, body { height: 100%; }
 </style>
 </head>
 <body>
-<table style='height: 15%;'><tr><td>
-<div class=button onClick='javascript:go_to_current_position()'>My location</div>
-<td>
-<div class=button onClick='javascript:find_closest_marker()'>Find nearest</div>
-</tr></table>
-<textarea rows=7 id=debug style='width: 80%; font-size: 50%;' >
+<textarea rows=7 id=debug style='width: 80%; font-size: 70%;' >
 </textarea>
+<table style='height: 15%;'><tr><td>
+<a href='#'>
+<div class=button onClick='javascript:go_to_current_position()'>My location</div>
+</a>
+<td>
+<a href='#'>
+<div class=button onClick='javascript:find_closest_marker("restaurant")'>Nearest restaurant</div>
+</a>
+<td>
+<a href='#'>
+<div class=button onClick='javascript:find_closest_marker("butcher")'>Nearest butcher</div>
+</a>
+<td>
+<a href='#'>
+<div class=button onClick='javascript:find_closest_marker("school")'>Nearest school</div>
+</a>
+<td>
+<a href='#'>
+<div class=button onClick='javascript:find_closest_marker("caterer")'>Nearest caterer</div>
+</a>
+</tr></table>
 <div style='width: 100%; height: 80%;' id="map_canvas"></div>
 
 <script>
@@ -80,7 +100,22 @@ function dump(arr,level) {
 <script type="text/javascript" src="jslib/jquery.ui.map.extensions.js"></script>
 <script>
 // main() ...
-$('#map_canvas').gmap().bind('init', function() { 
+$(document).ready(function () {
+	if( window.location.href.indexOf("10.0.") > -1 || window.location.href.indexOf("dev.html") > -1) {
+		$('#debug').show();
+	}
+	wait_for_markers();
+});
+
+// East London, the Mecca of HMC
+var default_map_center = new google.maps.LatLng( 51.54, 0.04);
+var cur_map_center = default_map_center;
+
+var default_options = {
+  zoom: 14,
+  center: new google.maps.LatLng( 51.54, 0.04), // East London, the Mecca of HMC
+};
+$('#map_canvas').gmap( default_options).bind('init', function() { 
 	// This URL won't work on your localhost, so you need to change it
 	// see http://en.wikipedia.org/wiki/Same_origin_policy
  	//google.maps.event.addListener(this, 'click', find_closest_marker);
@@ -95,21 +130,37 @@ $('#map_canvas').gmap().bind('init', function() {
 				'bounds': false,
 				'title': marker.title,
 				'type': marker.type,
-				'content': marker.content
+				'content': marker.content,
+				'icon': 'icons/' + marker.type + '.png'
 			}).click(function() {
 				$('#map_canvas').gmap('openInfoWindow', { 'content': marker.content }, this);
 			});
 		});
 	});
 });
+	
+var map =  $('#map_canvas').gmap('get', 'map');
+google.maps.event.addListener(map, 'idle', function() {  
+		cur_map_center = $('#map_canvas').gmap('get', 'map').getCenter();
+});
+var crosshairShape = {coords:[0,0,0,0],type:'rect'};
+var marker = new google.maps.Marker({
+	map: map,
+	icon: 'icons/cross-hairs.gif',
+	shape: crosshairShape
+});
+marker.bindTo('position', map, 'center');
 
+/*
 setTimeout(function() {
 	go_to_current_position();
+	find_closest_marker("restaurant");
 }, (3 * 1000));
 debug( $('#map_canvas').gmap('get', 'markers').length);
 go_to_current_position();
 $('#map_canvas').gmap('refresh');
 debug( $('#map_canvas').gmap('get', 'markers').length);
+*/
 
 // End of main()
 
@@ -131,6 +182,8 @@ function go_to_current_position() {
         content: 'Current location'
       });
 			*/
+			cur_map_center = pos;
+			debug(cur_map_center.toString());
       map.setCenter(pos);
 			$('#map_canvas').gmap('addShape', 'Circle', { 
 				'strokeWeight': 0, 
@@ -140,13 +193,14 @@ function go_to_current_position() {
 				'radius': 15, 
 				'clickable': false
 			});
+
 			debug( $('#map_canvas').gmap('option', 'zoom'));
 			if ( $('#map_canvas').gmap('option', 'zoom') < 9)
 				$('#map_canvas').gmap('option', 'zoom', 11);
 			$('#map_canvas').gmap('refresh');
     }, function() {
       handleNoGeolocation(true);
-    });
+    }, { enableHighAccuracy: false, maximumAge: 3600000, timeout: 60000,  });
   } else {
     // Browser doesn't support Geolocation
     handleNoGeolocation(false);
@@ -168,18 +222,45 @@ function go_to_current_position() {
   }
 }
 
+function wait_for_geoloc() {
+	if (cur_map_center.toString() == default_map_center.toString()) {
+		debug( "cur_map_center hasn't been updated yet, waiting 500msecs");
+		window.setTimeout( wait_for_geoloc, 500);
+	} else {
+		find_closest_marker("restaurant");
+	}
+}
+
+function wait_for_markers() {
+	if ( $('#map_canvas').gmap('get', 'markers').length > 500) {
+		debug('Now ' + $('#map_canvas').gmap('get', 'markers').length +
+			' markers loaded, now go do the works');
+		go_to_current_position();
+		wait_for_geoloc();
+	} else {
+		// Not loaded, try again in 0.5 seconds:
+		debug('Only ' + $('#map_canvas').gmap('get', 'markers').length +
+			' markers loaded, waiting 500 msecs');
+		window.setTimeout( wait_for_markers, 500);
+	}
+}
+
 function rad(x) {return x*Math.PI/180;}
-function find_closest_marker( ) {
-		var c =  $('#map_canvas').gmap('get', 'map').getCenter();
-//alert(c);
+function find_closest_marker( type) {
+		// Don't use  $('#map_canvas').gmap('get', 'map').getCenter();
+		// because if map is still zooming etc this is lagging behind
+		debug( cur_map_center.toString());
+		var c = cur_map_center;
+		//alert(c);
     var lat = c.lat();
     var lng = c.lng();
     var R = 6371; // radius of earth in km
     var distances = [];
     var closest = -1;
 		var markers = $('#map_canvas').gmap('get', 'markers');
-	debug( markers.length);
+		debug( markers.length);
     for( i = 0; i < markers.length; i++ ) {
+				if ( markers[i].type != type) continue;
         var mlat = markers[i].position.lat();
         var mlng = markers[i].position.lng();
 				/*
@@ -211,9 +292,26 @@ function find_closest_marker( ) {
 		var map =  $('#map_canvas').gmap('get', 'map');
     var pos = new google.maps.LatLng(markers[closest].position.lat(),
                                        markers[closest].position.lng());
-    map.setCenter(pos);
+		// If this marker is visible, open infowindow only,
+		// if not, then set zoom accordingly
+		if ( ! map.getBounds().contains(markers[closest].getPosition())) {
+			debug("Marker not visible, extending map bounds");
+			//  Create a new viewpoint bound
+			var bounds = new google.maps.LatLngBounds ();
+			bounds.extend (pos);
+			//  Fit these bounds to the map
+			// Create a virtual point at opposite side of center to fit bounds nicely
+	    var opp_lat = lat - (markers[closest].position.lat() - lat);
+	    var opp_lng = lng - (markers[closest].position.lng() - lng);
+			var opp_pos = new google.maps.LatLng( opp_lat, opp_lng);
+			bounds.extend (opp_pos);
+			map.fitBounds (bounds);
+		}
+
+    //map.setCenter(pos);
     //markers[closest].click;
-		$('#map_canvas').gmap('openInfoWindow', { 'content': markers[closest].content }, markers[closest]);
+		var msg = "Found nearest <i>" + type + "</i> from map center:<br>";
+		$('#map_canvas').gmap('openInfoWindow', { 'content': msg + markers[closest].content }, markers[closest]);
 }
 /* 
  * JS Graveyard (unused code) 
